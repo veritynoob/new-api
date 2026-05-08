@@ -218,6 +218,8 @@ const (
 	TokenStatusDisabled  = 2 // also don't use 0
 	TokenStatusExpired   = 3
 	TokenStatusExhausted = 4
+	TokenStatusPending   = 5
+	TokenStatusRejected  = 6
 )
 
 const (
