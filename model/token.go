@@ -28,6 +28,9 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	System             string         `json:"system" gorm:"type:varchar(255);default:''"`
+	Team               string         `json:"team" gorm:"type:varchar(255);default:''"`
+	ReviewComment      string         `json:"review_comment" gorm:"type:varchar(512);default:''"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -193,6 +196,8 @@ func ValidateUserToken(key string) (token *Token, err error) {
 	if err == nil {
 		if token.Status == common.TokenStatusExhausted ||
 			token.Status == common.TokenStatusExpired ||
+			token.Status == common.TokenStatusPending ||
+			token.Status == common.TokenStatusRejected ||
 			token.Status != common.TokenStatusEnabled {
 			return token, ErrTokenInvalid
 		}
@@ -295,7 +300,8 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry",
+		"system", "team", "review_comment").Updates(token).Error
 	return err
 }
 
