@@ -4403,6 +4403,25 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Rejected": "Rejected",
+    "Team": "Team",
+    "Key Review": "Key Review",
+    "Approve API Key": "Approve API Key",
+    "Reject API Key": "Reject API Key",
+    "Approve": "Approve",
+    "Reject": "Reject",
+    "Rejection reason (optional)": "Rejection reason (optional)",
+    "Enter the system name": "Enter the system name",
+    "Enter the team name": "Enter the team name",
+    "The system or application that will use this API key": "The system or application that will use this API key",
+    "The team responsible for this API key": "The team responsible for this API key",
+    "Review and approve API key applications": "Review and approve API key applications",
+    "Are you sure you want to approve this API key?": "Are you sure you want to approve this API key?",
+    "Are you sure you want to reject this API key?": "Are you sure you want to reject this API key?",
+    "Enter the reason for rejection...": "Enter the reason for rejection...",
+    "API Key approved successfully": "API Key approved successfully",
+    "API Key rejected successfully": "API Key rejected successfully",
+    "Failed to review API key": "Failed to review API key"
   }
 }
