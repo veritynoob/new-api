@@ -97,3 +97,13 @@ export async function fetchTokenKeysBatch(ids: number[]): Promise<{
   const res = await api.post('/api/token/batch/keys', { ids })
   return res.data
 }
+
+// Review an API key (approve/reject) — admin only
+export async function reviewApiKey(
+  id: number,
+  status: number,
+  comment?: string
+): Promise<ApiResponse<ApiKey>> {
+  const res = await api.put(`/api/token/${id}/review`, { status, comment })
+  return res.data
+}

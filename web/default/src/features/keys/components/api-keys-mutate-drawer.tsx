@@ -294,6 +294,40 @@ export function ApiKeysMutateDrawer({
 
               <FormField
                 control={form.control}
+                name='system'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('System')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder={t('Enter the system name')} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('The system or application that will use this API key')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='team'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Team')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder={t('Enter the team name')} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('The team responsible for this API key')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name='group'
                 render={({ field }) => (
                   <FormItem>
