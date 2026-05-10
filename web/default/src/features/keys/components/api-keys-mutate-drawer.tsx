@@ -16,6 +16,7 @@ import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   Collapsible,
   CollapsibleContent,
@@ -107,6 +108,8 @@ export function ApiKeysMutateDrawer({
   const { status } = useStatus()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false)
+  const [pendingPayload, setPendingPayload] = useState<ReturnType<typeof transformFormDataToPayload> & { id: number } | null>(null)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
 
   // Fetch models
@@ -164,57 +167,71 @@ export function ApiKeysMutateDrawer({
   }, [open, isUpdate, currentRow, form, defaultUseAutoGroup])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
+    const basePayload = transformFormDataToPayload(data)
+
+    if (isUpdate && currentRow) {
+      // Show confirmation dialog before updating — update triggers re-review
+      setPendingPayload({ ...basePayload, id: currentRow.id })
+      setShowUpdateConfirm(true)
+      return
+    }
+
     setIsSubmitting(true)
     try {
-      const basePayload = transformFormDataToPayload(data)
+      // Create mode - handle batch creation
+      const count = data.tokenCount || 1
+      let successCount = 0
 
-      if (isUpdate && currentRow) {
-        const result = await updateApiKey({
+      for (let i = 0; i < count; i++) {
+        const result = await createApiKey({
           ...basePayload,
-          id: currentRow.id,
+          name:
+            i === 0 && data.name
+              ? data.name
+              : `${data.name || 'default'}-${Math.random().toString(36).slice(2, 8)}`,
         })
         if (result.success) {
-          toast.success(t(SUCCESS_MESSAGES.API_KEY_UPDATED))
-          onOpenChange(false)
-          triggerRefresh()
+          successCount++
         } else {
-          toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
+          toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
+          break
         }
-      } else {
-        // Create mode - handle batch creation
-        const count = data.tokenCount || 1
-        let successCount = 0
+      }
 
-        for (let i = 0; i < count; i++) {
-          const result = await createApiKey({
-            ...basePayload,
-            name:
-              i === 0 && data.name
-                ? data.name
-                : `${data.name || 'default'}-${Math.random().toString(36).slice(2, 8)}`,
+      if (successCount > 0) {
+        toast.success(
+          t('Successfully created {{count}} API Key(s)', {
+            count: successCount,
           })
-          if (result.success) {
-            successCount++
-          } else {
-            toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
-            break
-          }
-        }
-
-        if (successCount > 0) {
-          toast.success(
-            t('Successfully created {{count}} API Key(s)', {
-              count: successCount,
-            })
-          )
-          onOpenChange(false)
-          triggerRefresh()
-        }
+        )
+        onOpenChange(false)
+        triggerRefresh()
       }
     } catch (_error) {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleConfirmUpdate = async () => {
+    if (!pendingPayload) return
+    setShowUpdateConfirm(false)
+    setIsSubmitting(true)
+    try {
+      const result = await updateApiKey(pendingPayload)
+      if (result.success) {
+        toast.success(t(SUCCESS_MESSAGES.API_KEY_UPDATED))
+        onOpenChange(false)
+        triggerRefresh()
+      } else {
+        toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
+      }
+    } catch (_error) {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setIsSubmitting(false)
+      setPendingPayload(null)
     }
   }
 
@@ -627,6 +644,17 @@ export function ApiKeysMutateDrawer({
           </Button>
         </SheetFooter>
       </SheetContent>
+      <ConfirmDialog
+        open={showUpdateConfirm}
+        onOpenChange={setShowUpdateConfirm}
+        title={t('Confirm Update')}
+        desc={t(
+          'Updating this API key will set it to pending status and make it temporarily unavailable until re-approved. Please proceed with caution.'
+        )}
+        confirmText={t('Yes, update')}
+        destructive
+        handleConfirm={handleConfirmUpdate}
+      />
     </Sheet>
   )
 }

@@ -36,12 +36,35 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	statusStr := c.Query("status")
+
+	var tokens []*model.Token
+	var total int64
+	var err error
+
+	if statusStr != "" {
+		status, parseErr := strconv.Atoi(statusStr)
+		if parseErr != nil {
+			common.ApiError(c, parseErr)
+			return
+		}
+		// Root admin can view all users' tokens filtered by status
+		if c.GetInt("role") == common.RoleRootUser {
+			tokens, total, err = model.GetAllTokensByStatus(status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		} else {
+			tokens, total, err = model.GetUserTokensByStatus(userId, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		}
+	} else {
+		tokens, err = model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err == nil {
+			total, _ = model.CountUserTokens(userId)
+		}
+	}
+
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -246,6 +269,17 @@ func AddToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Async notify root user about new pending key
+	go func(tokenName string, userId int) {
+		userName, err := model.GetUsernameById(userId, false)
+		if err != nil {
+			common.SysLog("failed to get username for notification: " + err.Error())
+			return
+		}
+		title := "新的 API Key 申请待审核"
+		content := fmt.Sprintf("用户 %s 申请了新的 API Key「%s」，请前往审核。", userName, tokenName)
+		service.NotifyRootUser(dto.NotifyTypeTokenReviewed, title, content)
+	}(cleanToken.Name, cleanToken.UserId)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -318,6 +352,10 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.System = token.System
+		cleanToken.Team = token.Team
+		// Full update triggers re-review: set status back to pending
+		cleanToken.Status = common.TokenStatusPending
 	}
 	err = cleanToken.Update()
 	if err != nil {

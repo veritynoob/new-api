@@ -31,6 +31,7 @@ type Token struct {
 	System             string         `json:"system" gorm:"type:varchar(255);default:''"`
 	Team               string         `json:"team" gorm:"type:varchar(255);default:''"`
 	ReviewComment      string         `json:"review_comment" gorm:"type:varchar(512);default:''"`
+	UserName           string         `json:"user_name,omitempty" gorm:"-"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -86,6 +87,55 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var err error
 	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
+}
+
+func GetUserTokensByStatus(userId int, status int, startIdx int, num int) ([]*Token, int64, error) {
+	var tokens []*Token
+	var total int64
+	baseQuery := DB.Model(&Token{}).Where("user_id = ? AND status = ?", userId, status)
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := baseQuery.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	return tokens, total, err
+}
+
+// GetAllTokensByStatus returns tokens with the given status across all users.
+// Only intended for admin/root use.
+func GetAllTokensByStatus(status int, startIdx int, num int) ([]*Token, int64, error) {
+	var tokens []*Token
+	var total int64
+	baseQuery := DB.Model(&Token{}).Where("status = ?", status)
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := baseQuery.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	// Batch-fetch usernames for the applicant column
+	if len(tokens) > 0 {
+		userIds := make([]int, 0, len(tokens))
+		for _, t := range tokens {
+			userIds = append(userIds, t.UserId)
+		}
+		var users []struct {
+			Id       int
+			Username string
+		}
+		if err := DB.Table("users").Select("id, username").Where("id IN (?)", userIds).Find(&users).Error; err != nil {
+			common.SysLog("failed to batch-fetch usernames for token review: " + err.Error())
+		} else {
+			userNameMap := make(map[int]string, len(users))
+			for _, u := range users {
+				userNameMap[u.Id] = u.Username
+			}
+			for _, t := range tokens {
+				t.UserName = userNameMap[t.UserId]
+			}
+		}
+	}
+	return tokens, total, nil
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。

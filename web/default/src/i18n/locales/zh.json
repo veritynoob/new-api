@@ -4422,6 +4422,11 @@
     "Enter the reason for rejection...": "请输入驳回原因...",
     "API Key approved successfully": "API Key 审批通过",
     "API Key rejected successfully": "API Key 已驳回",
-    "Failed to review API key": "审批操作失败"
+    "Failed to review API key": "审批操作失败",
+    "Approved": "已通过",
+    "Applicant": "申请人",
+    "Confirm Update": "确认更新",
+    "Updating this API key will set it to pending status and make it temporarily unavailable until re-approved. Please proceed with caution.": "更新秘钥，会让秘钥暂时不可用，请谨慎选择",
+    "Yes, update": "是的，确认更新"
   }
 }

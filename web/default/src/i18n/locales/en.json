@@ -4422,6 +4422,11 @@
     "Enter the reason for rejection...": "Enter the reason for rejection...",
     "API Key approved successfully": "API Key approved successfully",
     "API Key rejected successfully": "API Key rejected successfully",
-    "Failed to review API key": "Failed to review API key"
+    "Failed to review API key": "Failed to review API key",
+    "Approved": "Approved",
+    "Applicant": "Applicant",
+    "Confirm Update": "Confirm Update",
+    "Updating this API key will set it to pending status and make it temporarily unavailable until re-approved. Please proceed with caution.": "Updating this API key will set it to pending status and make it temporarily unavailable until re-approved. Please proceed with caution.",
+    "Yes, update": "Yes, update"
   }
 }

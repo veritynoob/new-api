@@ -16,8 +16,12 @@ import type {
 export async function getApiKeys(
   params: GetApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
-  const { p = 1, size = 10 } = params
-  const res = await api.get(`/api/token/?p=${p}&size=${size}`)
+  const { p = 1, size = 10, status } = params
+  const queryParams = new URLSearchParams()
+  queryParams.set('p', String(p))
+  queryParams.set('size', String(size))
+  if (status != null) queryParams.set('status', String(status))
+  const res = await api.get(`/api/token/?${queryParams.toString()}`)
   return res.data
 }
 

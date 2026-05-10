@@ -17,16 +17,19 @@ export function ApiKeysReviewTable() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['api-keys-review', statusFilter],
-    queryFn: () => getApiKeys({ p: 1, size: 100 }),
+    queryFn: () => getApiKeys({ p: 1, size: 100, status: statusFilter }),
   })
 
-  const keys = (data?.data?.items || []).filter((k) => k.status === statusFilter)
+  const keys = data?.data?.items || []
 
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-2'>
         <Button variant={statusFilter === 5 ? 'default' : 'outline'} size='sm' onClick={() => setStatusFilter(5)}>
           {t('Pending')}
+        </Button>
+        <Button variant={statusFilter === 1 ? 'default' : 'outline'} size='sm' onClick={() => setStatusFilter(1)}>
+          {t('Approved')}
         </Button>
         <Button variant={statusFilter === 6 ? 'default' : 'outline'} size='sm' onClick={() => setStatusFilter(6)}>
           {t('Rejected')}
@@ -41,6 +44,7 @@ export function ApiKeysReviewTable() {
           <table className='w-full text-sm'>
             <thead className='bg-muted/50'>
               <tr>
+                <th className='px-3 py-2 text-left'>{t('Applicant')}</th>
                 <th className='px-3 py-2 text-left'>{t('Name')}</th>
                 <th className='px-3 py-2 text-left'>{t('System')}</th>
                 <th className='px-3 py-2 text-left'>{t('Team')}</th>
@@ -55,6 +59,7 @@ export function ApiKeysReviewTable() {
                 const statusConfig = API_KEY_STATUSES[key.status]
                 return (
                   <tr key={key.id} className='border-t'>
+                    <td className='px-3 py-2 text-muted-foreground'>{key.user_name || key.user_id}</td>
                     <td className='px-3 py-2 font-medium'>{key.name}</td>
                     <td className='px-3 py-2 text-muted-foreground'>{key.system || '-'}</td>
                     <td className='px-3 py-2 text-muted-foreground'>{key.team || '-'}</td>

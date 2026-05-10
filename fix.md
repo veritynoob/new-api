@@ -132,3 +132,75 @@ NotifyTypeTokenReviewed = "token_reviewed"
 - 表单：`System` / `Team` / `Select the system using this key` / `Select the team using this key`
 - 审批：`Key Review` / `Approve` / `Reject` / `Rejection reason (optional)`
 - 通知：`API Key application approved` / `API Key application rejected`
+
+---
+
+## 五、Bug 修复与补充变更
+
+### 5.1 审批列表无法查看所有用户的待审核 Key
+
+**问题：** `GET /api/token/` 仅返回当前用户的 Token，审批页面无法查看其他用户的待审核 Key。
+
+**修复：**
+- `controller/token.go` `GetAllTokens`：新增 `?status=` 查询参数支持；当 role=100 的超级管理员请求时，返回所有用户匹配该状态的 Token
+- `model/token.go`：新增 `GetAllTokensByStatus`（跨用户查询）和 `GetUserTokensByStatus`（单用户查询）函数
+
+### 5.2 更新 Key 时 System/Team 字段丢失
+
+**问题：** `UpdateToken` 在非 status_only 模式下未将 `System` 和 `Team` 从请求复制到 `cleanToken`，导致更新后这两个字段被清空。
+
+**修复：** `controller/token.go` `UpdateToken`：在非 status_only 分支中添加 `cleanToken.System = token.System` 和 `cleanToken.Team = token.Team`。
+
+### 5.3 审批页面前端路由未注册
+
+**问题：** `routes/_authenticated/admin/keys/review/index.tsx` 未导出 `Route` 对象，TanStack Router 代码生成器无法识别该路由，页面返回 404。
+
+**修复：** 添加 `createFileRoute` Route 导出，并增加 `beforeLoad` 守卫：非超级管理员（role < 100）重定向至 `/403`。
+
+### 5.4 审批列表前端使用客户端筛选
+
+**问题：** 审批页面获取全部 Key（最多 100 条）后在客户端按 status 过滤，而非将 `?status=` 传给 API。
+
+**修复：**
+- `types.ts`：`GetApiKeysParams` 新增 `status` 字段
+- `api.ts`：`getApiKeys` 支持传递 `status` 查询参数
+- `api-keys-review-table.tsx`：直接传 `status: statusFilter` 给 API，不再客户端过滤
+
+### 5.5 更新 Key 后状态变为待审核
+
+**需求：** 用户更新 Key 时，Key 状态应变为"待审核"（pending=5），暂时不可用直到管理员重新审批。
+
+**后端变更：** `controller/token.go` `UpdateToken`：非 status_only 更新时，`cleanToken.Status = common.TokenStatusPending`。
+
+**前端变更：**
+- `api-keys-mutate-drawer.tsx`：更新模式下提交前弹出确认对话框：
+  - 标题：`Confirm Update`
+  - 描述：`Updating this API key will set it to pending status and make it temporarily unavailable until re-approved.`
+  - 确认按钮：`Yes, update`
+- `en.json` / `zh.json`：新增上述 i18n key
+
+### 5.6 新建 Key 时通知超级管理员
+
+**需求：** 普通用户创建 API Key（pending 状态）后，超级管理员应收
+
+到通知。
+
+**实现：** `controller/token.go` `AddToken`：Token 创建成功后异步调用 `service.NotifyRootUser`，通知内容包含申请人用户名和 Key 名称。
+
+**NotifyRootUser 安全修复：** `service/user_notify.go`：增加 nil 检查，`GetRootUser()` 返回 nil 时记录日志而非 panic。
+
+### 5.7 审批列表缺少申请人列
+
+**问题：** 审批列表未显示 Key 的申请人信息。
+
+**修复：**
+- `model/token.go` `Token` 结构体：新增 `UserName` 字段（`gorm:"-"` — 不持久化，仅用于 API 响应）
+- `GetAllTokensByStatus`：批量查询 users 表获取用户名，填充到 Token 的 `UserName` 字段
+- 前端 `types.ts`：新增 `user_name` 字段
+- `api-keys-review-table.tsx`：新增"申请人"列，显示 `user_name`（降级为 `user_id`）
+
+### 5.8 审批列表新增"已通过"筛选
+
+**需求：** 管理员除了查看待审核和已驳回的 Key，还需要查看已通过的 Key。
+
+**修复：** `api-keys-review-table.tsx`：筛选栏新增"Approved"按钮（status=1），与 Pending（status=5）、Rejected（status=6）并列。已通过的 Key 不显示审批操作按钮。
