@@ -340,6 +340,10 @@ func UpdateToken(c *gin.Context) {
 		}
 	}
 	if statusOnly != "" {
+		if token.Status == common.TokenStatusEnabled && c.GetInt("role") < common.RoleAdminUser {
+			common.ApiErrorI18n(c, i18n.MsgTokenSelfEnableNotAllowed)
+			return
+		}
 		cleanToken.Status = token.Status
 	} else {
 		// If you add more fields, please also update token.Update()
