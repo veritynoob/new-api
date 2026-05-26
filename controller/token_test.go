@@ -539,3 +539,258 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
 	}
 }
+
+func TestAddTokenRejectsMissingSystem(t *testing.T) {
+	_ = setupTokenControllerTestDB(t)
+
+	body := map[string]any{
+		"name":         "test-token",
+		"team":         "test-team",
+		"remain_quota": 100,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected AddToken to reject missing system field, got success")
+	}
+}
+
+func TestAddTokenRejectsMissingTeam(t *testing.T) {
+	_ = setupTokenControllerTestDB(t)
+
+	body := map[string]any{
+		"name":         "test-token",
+		"system":       "test-system",
+		"remain_quota": 100,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected AddToken to reject missing team field, got success")
+	}
+}
+
+func TestAddTokenSetsPendingStatus(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+
+	body := map[string]any{
+		"name":            "test-token",
+		"system":          "test-system",
+		"team":            "test-team",
+		"remain_quota":    100,
+		"unlimited_quota": false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected AddToken to succeed, got message: %s", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("name = ? AND user_id = ?", "test-token", 1).First(&token).Error; err != nil {
+		t.Fatalf("failed to find created token: %v", err)
+	}
+	if token.Status != common.TokenStatusPending {
+		t.Fatalf("expected token status %d (pending), got %d", common.TokenStatusPending, token.Status)
+	}
+	if token.System != "test-system" {
+		t.Fatalf("expected token system %q, got %q", "test-system", token.System)
+	}
+	if token.Team != "test-team" {
+		t.Fatalf("expected token team %q, got %q", "test-team", token.Team)
+	}
+}
+
+func TestReviewTokenRejectsNonPending(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "approved-token", "testkey1234abcd5678") // status=1 (enabled)
+
+	body := map[string]any{
+		"status": common.TokenStatusEnabled,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/review/"+strconv.Itoa(token.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	ReviewToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected ReviewToken to reject already-approved token, got success")
+	}
+
+	// Verify token unchanged
+	var updated model.Token
+	if err := db.First(&updated, token.Id).Error; err != nil {
+		t.Fatalf("failed to fetch token: %v", err)
+	}
+	if updated.Status != common.TokenStatusEnabled {
+		t.Fatalf("expected token status to remain %d, got %d", common.TokenStatusEnabled, updated.Status)
+	}
+}
+
+func TestReviewTokenApprovesPendingToken(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	// Also migrate User table for the notification goroutine
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("failed to migrate user table: %v", err)
+	}
+	user := model.User{
+		Id:       1,
+		Username: "testuser",
+		Password: "testpassword123",
+		Role:     1,
+		Status:   common.UserStatusEnabled,
+		Email:    "test@example.com",
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+
+	// Create pending token
+	pendingToken := &model.Token{
+		UserId:         1,
+		Name:           "pending-token",
+		Key:            "pendingkey12345678",
+		Status:         common.TokenStatusPending,
+		CreatedTime:    1,
+		AccessedTime:   1,
+		ExpiredTime:    -1,
+		RemainQuota:    100,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}
+	if err := db.Create(pendingToken).Error; err != nil {
+		t.Fatalf("failed to create pending token: %v", err)
+	}
+
+	body := map[string]any{
+		"status": common.TokenStatusEnabled,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/review/"+strconv.Itoa(pendingToken.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(pendingToken.Id)}}
+	ReviewToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected ReviewToken to approve pending token, got message: %s", response.Message)
+	}
+
+	var updated model.Token
+	if err := db.First(&updated, pendingToken.Id).Error; err != nil {
+		t.Fatalf("failed to fetch token: %v", err)
+	}
+	if updated.Status != common.TokenStatusEnabled {
+		t.Fatalf("expected token status %d, got %d", common.TokenStatusEnabled, updated.Status)
+	}
+}
+
+func TestReviewTokenRejectsPendingTokenWithComment(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("failed to migrate user table: %v", err)
+	}
+	user := model.User{
+		Id:       1,
+		Username: "testuser",
+		Password: "testpassword123",
+		Role:     1,
+		Status:   common.UserStatusEnabled,
+		Email:    "test@example.com",
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+
+	pendingToken := &model.Token{
+		UserId:         1,
+		Name:           "pending-reject-token",
+		Key:            "rejectkey12345678",
+		Status:         common.TokenStatusPending,
+		CreatedTime:    1,
+		AccessedTime:   1,
+		ExpiredTime:    -1,
+		RemainQuota:    100,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}
+	if err := db.Create(pendingToken).Error; err != nil {
+		t.Fatalf("failed to create pending token: %v", err)
+	}
+
+	body := map[string]any{
+		"status":  common.TokenStatusRejected,
+		"comment": "Inappropriate use case",
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/review/"+strconv.Itoa(pendingToken.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(pendingToken.Id)}}
+	ReviewToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected ReviewToken to reject pending token, got message: %s", response.Message)
+	}
+
+	var updated model.Token
+	if err := db.First(&updated, pendingToken.Id).Error; err != nil {
+		t.Fatalf("failed to fetch token: %v", err)
+	}
+	if updated.Status != common.TokenStatusRejected {
+		t.Fatalf("expected token status %d, got %d", common.TokenStatusRejected, updated.Status)
+	}
+	if updated.ReviewComment != "Inappropriate use case" {
+		t.Fatalf("expected review comment %q, got %q", "Inappropriate use case", updated.ReviewComment)
+	}
+}
+
+func TestReviewTokenRejectsInvalidStatus(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+
+	pendingToken := &model.Token{
+		UserId:         1,
+		Name:           "invalid-status-token",
+		Key:            "invalidkey1234567",
+		Status:         common.TokenStatusPending,
+		CreatedTime:    1,
+		AccessedTime:   1,
+		ExpiredTime:    -1,
+		RemainQuota:    100,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}
+	if err := db.Create(pendingToken).Error; err != nil {
+		t.Fatalf("failed to create pending token: %v", err)
+	}
+
+	body := map[string]any{
+		"status": 3, // invalid: neither 1 nor 6
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/review/"+strconv.Itoa(pendingToken.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(pendingToken.Id)}}
+	ReviewToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected ReviewToken to reject invalid status value 3, got success")
+	}
+
+	// Verify token unchanged
+	var updated model.Token
+	if err := db.First(&updated, pendingToken.Id).Error; err != nil {
+		t.Fatalf("failed to fetch token: %v", err)
+	}
+	if updated.Status != common.TokenStatusPending {
+		t.Fatalf("expected token status to remain %d, got %d", common.TokenStatusPending, updated.Status)
+	}
+}

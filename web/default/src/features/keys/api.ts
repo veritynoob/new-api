@@ -16,8 +16,12 @@ import type {
 export async function getApiKeys(
   params: GetApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
-  const { p = 1, size = 10 } = params
-  const res = await api.get(`/api/token/?p=${p}&size=${size}`)
+  const { p = 1, size = 10, status } = params
+  const queryParams = new URLSearchParams()
+  queryParams.set('p', String(p))
+  queryParams.set('size', String(size))
+  if (status != null) queryParams.set('status', String(status))
+  const res = await api.get(`/api/token/?${queryParams.toString()}`)
   return res.data
 }
 
@@ -95,5 +99,15 @@ export async function fetchTokenKeysBatch(ids: number[]): Promise<{
   data?: { keys: Record<number, string> }
 }> {
   const res = await api.post('/api/token/batch/keys', { ids })
+  return res.data
+}
+
+// Review an API key (approve/reject) — admin only
+export async function reviewApiKey(
+  id: number,
+  status: number,
+  comment?: string
+): Promise<ApiResponse<ApiKey>> {
+  const res = await api.put(`/api/token/${id}/review`, { status, comment })
   return res.data
 }

@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -34,12 +36,35 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	statusStr := c.Query("status")
+
+	var tokens []*model.Token
+	var total int64
+	var err error
+
+	if statusStr != "" {
+		status, parseErr := strconv.Atoi(statusStr)
+		if parseErr != nil {
+			common.ApiError(c, parseErr)
+			return
+		}
+		// Root admin can view all users' tokens filtered by status
+		if c.GetInt("role") == common.RoleRootUser {
+			tokens, total, err = model.GetAllTokensByStatus(status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		} else {
+			tokens, total, err = model.GetUserTokensByStatus(userId, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		}
+	} else {
+		tokens, err = model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err == nil {
+			total, _ = model.CountUserTokens(userId)
+		}
+	}
+
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -175,6 +200,20 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	if token.System == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "系统字段不能为空",
+		})
+		return
+	}
+	if token.Team == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "团队字段不能为空",
+		})
+		return
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -211,6 +250,7 @@ func AddToken(c *gin.Context) {
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
+		Status:             common.TokenStatusPending,
 		CreatedTime:        common.GetTimestamp(),
 		AccessedTime:       common.GetTimestamp(),
 		ExpiredTime:        token.ExpiredTime,
@@ -221,12 +261,25 @@ func AddToken(c *gin.Context) {
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
+		System:             token.System,
+		Team:               token.Team,
 	}
 	err = cleanToken.Insert()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	// Async notify root user about new pending key
+	go func(tokenName string, userId int) {
+		userName, err := model.GetUsernameById(userId, false)
+		if err != nil {
+			common.SysLog("failed to get username for notification: " + err.Error())
+			return
+		}
+		title := "新的 API Key 申请待审核"
+		content := fmt.Sprintf("用户 %s 申请了新的 API Key「%s」，请前往审核。", userName, tokenName)
+		service.NotifyRootUser(dto.NotifyTypeTokenReviewed, title, content)
+	}(cleanToken.Name, cleanToken.UserId)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -287,6 +340,10 @@ func UpdateToken(c *gin.Context) {
 		}
 	}
 	if statusOnly != "" {
+		if token.Status == common.TokenStatusEnabled && c.GetInt("role") < common.RoleAdminUser {
+			common.ApiErrorI18n(c, i18n.MsgTokenSelfEnableNotAllowed)
+			return
+		}
 		cleanToken.Status = token.Status
 	} else {
 		// If you add more fields, please also update token.Update()
@@ -299,6 +356,10 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.System = token.System
+		cleanToken.Team = token.Team
+		// Full update triggers re-review: set status back to pending
+		cleanToken.Status = common.TokenStatusPending
 	}
 	err = cleanToken.Update()
 	if err != nil {
@@ -356,4 +417,65 @@ func GetTokenKeysBatch(c *gin.Context) {
 		keysMap[t.Id] = t.GetFullKey()
 	}
 	common.ApiSuccess(c, gin.H{"keys": keysMap})
+}
+
+type ReviewTokenRequest struct {
+	Status  int    `json:"status"`
+	Comment string `json:"comment"`
+}
+
+func ReviewToken(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var req ReviewTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.Status != common.TokenStatusEnabled && req.Status != common.TokenStatusRejected {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "status 必须为 1（通过）或 6（驳回）"})
+		return
+	}
+	token, err := model.GetTokenById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if token.Status != common.TokenStatusPending {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "该 Key 已审核，无法重复操作"})
+		return
+	}
+	token.Status = req.Status
+	if req.Status == common.TokenStatusRejected && req.Comment != "" {
+		token.ReviewComment = req.Comment
+	}
+	if err := token.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	// Async notify
+	go func() {
+		owner, err := model.GetUserById(token.UserId, false)
+		if err != nil {
+			common.SysLog("failed to get token owner for notification: " + err.Error())
+			return
+		}
+		var title, content string
+		if req.Status == common.TokenStatusEnabled {
+			title = "API Key 申请已通过"
+			content = fmt.Sprintf("您的 API Key「%s」已通过审核，现在可以使用了。", token.Name)
+		} else {
+			title = "API Key 申请已驳回"
+			content = fmt.Sprintf("您的 API Key「%s」已被驳回。", token.Name)
+			if req.Comment != "" {
+				content += fmt.Sprintf(" 原因：%s", req.Comment)
+			}
+		}
+		_ = service.NotifyUser(owner.Id, owner.Email, owner.GetSetting(),
+			dto.NewNotify(dto.NotifyTypeTokenReviewed, title, content, nil))
+	}()
+	common.ApiSuccess(c, buildMaskedTokenResponse(token))
 }

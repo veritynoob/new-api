@@ -10,6 +10,8 @@ export const API_KEY_STATUS = {
   DISABLED: 2,
   EXPIRED: 3,
   EXHAUSTED: 4,
+  PENDING: 5,
+  REJECTED: 6,
 } as const
 
 export const API_KEY_STATUSES: Record<
@@ -43,6 +45,18 @@ export const API_KEY_STATUSES: Record<
     value: API_KEY_STATUS.EXHAUSTED,
     showDot: true,
   },
+  [API_KEY_STATUS.PENDING]: {
+    label: 'Pending',
+    variant: 'warning',
+    value: API_KEY_STATUS.PENDING,
+    showDot: true,
+  },
+  [API_KEY_STATUS.REJECTED]: {
+    label: 'Rejected',
+    variant: 'danger',
+    value: API_KEY_STATUS.REJECTED,
+    showDot: true,
+  },
 } as const
 
 export const API_KEY_STATUS_OPTIONS = Object.values(API_KEY_STATUSES).map(
@@ -71,6 +85,7 @@ export const ERROR_MESSAGES = {
   DELETE_FAILED: 'Failed to delete API key',
   BATCH_DELETE_FAILED: 'Failed to delete API keys',
   STATUS_UPDATE_FAILED: 'Failed to update API key status',
+  REVIEW_FAILED: 'Failed to review API key',
 } as const
 
 // ============================================================================
@@ -83,4 +98,6 @@ export const SUCCESS_MESSAGES = {
   API_KEY_DELETED: 'API Key deleted successfully',
   API_KEY_ENABLED: 'API Key enabled successfully',
   API_KEY_DISABLED: 'API Key disabled successfully',
+  API_KEY_APPROVED: 'API Key approved successfully',
+  API_KEY_REJECTED: 'API Key rejected successfully',
 } as const

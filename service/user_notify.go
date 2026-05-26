@@ -15,8 +15,13 @@ import (
 )
 
 func NotifyRootUser(t string, subject string, content string) {
-	user := model.GetRootUser().ToBaseUser()
-	err := NotifyUser(user.Id, user.Email, user.GetSetting(), dto.NewNotify(t, subject, content, nil))
+	user := model.GetRootUser()
+	if user == nil {
+		common.SysLog("no root user found for notification")
+		return
+	}
+	baseUser := user.ToBaseUser()
+	err := NotifyUser(baseUser.Id, baseUser.Email, baseUser.GetSetting(), dto.NewNotify(t, subject, content, nil))
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to notify root user: %s", err.Error()))
 	}

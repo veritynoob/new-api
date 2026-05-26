@@ -6,9 +6,10 @@ import { z } from 'zod'
 
 export const apiKeySchema = z.object({
   id: z.number(),
+  user_id: z.number(),
   name: z.string(),
   key: z.string(),
-  status: z.number(), // 1: enabled, 2: disabled, 3: expired, 4: exhausted
+  status: z.number(), // 1: enabled, 2: disabled, 3: expired, 4: exhausted, 5: pending, 6: rejected
   remain_quota: z.number(),
   used_quota: z.number(),
   unlimited_quota: z.boolean(),
@@ -27,6 +28,10 @@ export const apiKeySchema = z.object({
   model_limits_enabled: z.boolean(),
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
+  user_name: z.string().nullish().default(''),
+  system: z.string().nullish().default(''),
+  team: z.string().nullish().default(''),
+  review_comment: z.string().nullish().default(''),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -44,6 +49,7 @@ export interface ApiResponse<T = unknown> {
 export interface GetApiKeysParams {
   p?: number
   size?: number
+  status?: number
 }
 
 export interface GetApiKeysResponse {
@@ -74,6 +80,8 @@ export interface ApiKeyFormData {
   allow_ips: string
   group: string
   cross_group_retry: boolean
+  system: string
+  team: string
 }
 
 // ============================================================================

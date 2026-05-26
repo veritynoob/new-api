@@ -245,6 +245,30 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       meta: { label: t('Group'), mobileHidden: true },
     },
     {
+      accessorKey: 'system',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('System')} />
+      ),
+      cell: ({ row }) => (
+        <span className='max-w-[120px] truncate block text-xs'>
+          {row.getValue('system') || '-'}
+        </span>
+      ),
+      meta: { label: t('System'), mobileHidden: true },
+    },
+    {
+      accessorKey: 'team',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Team')} />
+      ),
+      cell: ({ row }) => (
+        <span className='max-w-[120px] truncate block text-xs'>
+          {row.getValue('team') || '-'}
+        </span>
+      ),
+      meta: { label: t('Team'), mobileHidden: true },
+    },
+    {
       id: 'model_limits',
       accessorKey: 'model_limits',
       header: ({ column }) => (
