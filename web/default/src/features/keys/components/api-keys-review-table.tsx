@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/status-badge'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { formatTimestampToDate } from '@/lib/format'
 import { getApiKeys } from '../api'
 import { API_KEY_STATUSES } from '../constants'
@@ -68,18 +68,20 @@ export function ApiKeysReviewTable() {
                     <td className='px-3 py-2 text-muted-foreground'>{key.group || '-'}</td>
                     <td className='px-3 py-2 text-muted-foreground'>
                       {key.model_limits ? (
-                        <Tooltip>
-                          <TooltipTrigger className='cursor-default underline decoration-dotted underline-offset-2'>
-                            {key.model_limits.split(',').length + ' model(s)'}
-                          </TooltipTrigger>
-                          <TooltipContent side='top'>
-                            <ul className='list-disc pl-3 text-left'>
-                              {key.model_limits.split(',').map((model) => (
-                                <li key={model.trim()}>{model.trim()}</li>
-                              ))}
-                            </ul>
-                          </TooltipContent>
-                        </Tooltip>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger className='cursor-default underline decoration-dotted underline-offset-2'>
+                              {key.model_limits.split(',').length + ' model(s)'}
+                            </TooltipTrigger>
+                            <TooltipContent side='top'>
+                              <ul className='list-disc pl-3 text-left'>
+                                {key.model_limits.split(',').map((model) => (
+                                  <li key={model.trim()}>{model.trim()}</li>
+                                ))}
+                              </ul>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       ) : (
                         t('All')
                       )}
