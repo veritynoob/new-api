@@ -333,7 +333,7 @@ export function ApiKeysMutateDrawer({
                   <FormItem>
                     <FormLabel>{t('Team')}</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder={t('Enter the team name')} />
+                      <Input {...field} placeholder={t('Please enter the specific department name (e.g., Tech Service Department - Data Asset Office), otherwise it will not be approved')} />
                     </FormControl>
                     <FormDescription>
                       {t('The team responsible for this API key')}
